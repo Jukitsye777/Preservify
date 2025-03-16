@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { supabase } from "./Supabaseclient.tsx"; // Ensure the path is correct
+import preservifyLogo from "../assets/preservify.jpg"; // Import the logo
 
 export default function LoginPage({ setIsAuthenticated }) {
   const [email, setEmail] = useState("");
@@ -38,6 +39,11 @@ export default function LoginPage({ setIsAuthenticated }) {
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-black bg-grid">
+      {/* Logo in top left corner */}
+      {/* <div className="absolute top-4 left-4">
+        <img src={preservifyLogo} alt="Preservify Logo" className="w-32 h-32 object-contain" />
+      </div> */}
+      
       <style>
         {`
           .bg-grid {

@@ -1,10 +1,22 @@
 import { useEffect, useState } from "react";
 import { supabase } from "./Supabaseclient.tsx"; // Import Supabase client
 import { useNavigate } from "react-router-dom"; // For navigation
+import { motion, AnimatePresence } from "framer-motion"; // Import for animations
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  ResponsiveContainer,
+} from "recharts"; // Import chart components
 
 export default function TableView() {
   const [items, setItems] = useState([]); // State to store inventory data
   const [loading, setLoading] = useState(true); // State for loading
+  const [hoveredItem, setHoveredItem] = useState(null); // Track hovered item
+  const [itemSalesData, setItemSalesData] = useState({}); // Store sales data
   const navigate = useNavigate(); // For navigation
 
   useEffect(() => {
@@ -12,7 +24,7 @@ export default function TableView() {
       setLoading(true);
       const { data, error } = await supabase
         .from("food_inven") // Table name
-        .select("id, product_name, category, expiry_date, purchase_date, quantity, unit, storage_location, price_per_unit, image");
+        .select("id, product_id, product_name, category, expiry_date, purchase_date, quantity, unit, storage_location, price_per_unit, image");
 
       if (error) {
         console.error("Error fetching inventory:", error.message);
@@ -23,7 +35,51 @@ export default function TableView() {
     };
 
     fetchInventory();
+    fetchAllSalesData(); // Fetch sales data
   }, []);
+
+  // Fetch sales data for all products
+  const fetchAllSalesData = async () => {
+    const { data, error } = await supabase
+      .from("food-log")
+      .select("product_id, selling_date, quantity_sold");
+
+    if (error) {
+      console.error("Error fetching sales data:", error.message);
+    } else {
+      // Process and organize sales data by product_id
+      const salesByProduct = {};
+      
+      data.forEach(({ product_id, selling_date, quantity_sold }) => {
+        if (!salesByProduct[product_id]) {
+          salesByProduct[product_id] = [];
+        }
+        
+        // Check if we already have an entry for this date
+        const existingEntry = salesByProduct[product_id].find(
+          entry => entry.date === selling_date
+        );
+        
+        if (existingEntry) {
+          existingEntry.quantity += quantity_sold;
+        } else {
+          salesByProduct[product_id].push({
+            date: selling_date,
+            quantity: quantity_sold
+          });
+        }
+      });
+      
+      // Sort data by date for each product
+      Object.keys(salesByProduct).forEach(productId => {
+        salesByProduct[productId].sort((a, b) => 
+          new Date(a.date) - new Date(b.date)
+        );
+      });
+      
+      setItemSalesData(salesByProduct);
+    }
+  };
 
   // Function to calculate the warning and expiry status
   const getStatus = (expiry_date) => {
@@ -115,7 +171,7 @@ export default function TableView() {
       )}
 
       {/* Inventory Table - Updated with darker theme */}
-      <div className="mt-6 w-full max-w-7xl overflow-x-auto bg-gray-900 rounded-lg shadow-xl border border-gray-700">
+      <div className="mt-6 w-full max-w-7xl overflow-x-auto bg-gray-900 rounded-lg shadow-xl border border-gray-700 relative">
         <table className="min-w-full rounded-lg overflow-hidden">
           <thead>
             <tr className="bg-gray-800 text-green-400">
@@ -134,7 +190,12 @@ export default function TableView() {
             {items.map((item) => {
               const status = getStatus(item.expiry_date);
               return (
-                <tr key={item.id} className="border-b border-gray-700 hover:bg-gray-800 text-gray-300">
+                <tr 
+                  key={item.id} 
+                  className="border-b border-gray-700 hover:bg-gray-800 text-gray-300 relative"
+                  onMouseEnter={() => setHoveredItem(item.product_id)}
+                  onMouseLeave={() => setHoveredItem(null)}
+                >
                   <td className="py-3 px-6 border-r border-gray-700 flex items-center space-x-3">
                     <img src={item.image || "https://via.placeholder.com/50"} alt={item.product_name} className="w-10 h-10 object-cover rounded-md" />
                     <span>{item.product_name}</span>
@@ -155,6 +216,50 @@ export default function TableView() {
                   <td className={`py-3 px-6 font-bold ${status.color}`}>
                     {status.text === "Expired" ? status.text : ""}
                   </td>
+                  
+                  {/* Hover Graph */}
+                  <AnimatePresence>
+                    {hoveredItem === item.product_id && itemSalesData[item.product_id] && itemSalesData[item.product_id].length > 0 && (
+                      <motion.div 
+                        className="absolute z-50 top-0 right-0 transform -translate-y-full bg-gray-900 p-4 rounded-lg shadow-xl border border-gray-700"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 20 }}
+                        transition={{ duration: 0.2 }}
+                        style={{ width: '300px', height: '200px', marginTop: '-10px', marginRight: '20px' }}
+                      >
+                        <h4 className="text-sm font-semibold text-green-400 mb-2">Sales History: {item.product_name}</h4>
+                        <ResponsiveContainer width="100%" height="80%">
+                          <LineChart data={itemSalesData[item.product_id]}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                            <XAxis 
+                              dataKey="date" 
+                              tick={{ fill: 'white', fontSize: 10 }}
+                              tickFormatter={(date) => new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                            />
+                            <YAxis tick={{ fill: 'white', fontSize: 10 }} />
+                            <Tooltip 
+                              contentStyle={{
+                                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                                border: '1px solid #444',
+                                color: 'white',
+                                fontSize: '12px'
+                              }}
+                              formatter={(value) => [`${value} ${item.unit}`, 'Quantity']}
+                              labelFormatter={(date) => new Date(date).toLocaleDateString()}
+                            />
+                            <Line 
+                              type="monotone" 
+                              dataKey="quantity" 
+                              stroke="#4ade80" 
+                              strokeWidth={2}
+                              dot={{ r: 3, fill: '#4ade80' }}
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </tr>
               );
             })}

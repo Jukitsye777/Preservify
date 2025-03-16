@@ -95,7 +95,7 @@ export default function SignUp() {
         `}
       </style>
 
-      <div className="flex w-full max-w-4xl items-center justify-between mt-16 space-x-10">
+      <div className="flex w-full max-w-4xl items-center justify-between mt-8 space-x-10">
         {/* Animated Welcome Message */}
         <motion.h1
           className="text-5xl font-extrabold text-green-400 w-1/2"
