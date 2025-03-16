@@ -2,6 +2,15 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "./Supabaseclient.tsx";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  ResponsiveContainer,
+} from "recharts"; // Import chart components
 
 export default function CardView() {
   const [items, setItems] = useState([]);
@@ -9,6 +18,8 @@ export default function CardView() {
   const [selectedItem, setSelectedItem] = useState(null);
   const [quantitySold, setQuantitySold] = useState("");
   const [isPopupOpen, setPopupOpen] = useState(false);
+  const [hoveredItem, setHoveredItem] = useState(null); // New state for tracking hovered item
+  const [itemSalesData, setItemSalesData] = useState({}); // Store sales data for each product
   const [newItem, setNewItem] = useState({
     product_name: "",
     category: "",
@@ -25,6 +36,7 @@ export default function CardView() {
 
   useEffect(() => {
     fetchInventory();
+    fetchAllSalesData(); // Fetch sales data for all products
   }, []);
 
   const fetchInventory = async () => {
@@ -37,6 +49,49 @@ export default function CardView() {
       setItems(data);
     }
     setLoading(false);
+  };
+
+  // Fetch sales data for all products
+  const fetchAllSalesData = async () => {
+    const { data, error } = await supabase
+      .from("food-log")
+      .select("product_id, selling_date, quantity_sold");
+
+    if (error) {
+      console.error("Error fetching sales data:", error.message);
+    } else {
+      // Process and organize sales data by product_id
+      const salesByProduct = {};
+      
+      data.forEach(({ product_id, selling_date, quantity_sold }) => {
+        if (!salesByProduct[product_id]) {
+          salesByProduct[product_id] = [];
+        }
+        
+        // Check if we already have an entry for this date
+        const existingEntry = salesByProduct[product_id].find(
+          entry => entry.date === selling_date
+        );
+        
+        if (existingEntry) {
+          existingEntry.quantity += quantity_sold;
+        } else {
+          salesByProduct[product_id].push({
+            date: selling_date,
+            quantity: quantity_sold
+          });
+        }
+      });
+      
+      // Sort data by date for each product
+      Object.keys(salesByProduct).forEach(productId => {
+        salesByProduct[productId].sort((a, b) => 
+          new Date(a.date) - new Date(b.date)
+        );
+      });
+      
+      setItemSalesData(salesByProduct);
+    }
   };
 
   const handleSaleUpdate = async () => {
@@ -77,6 +132,9 @@ export default function CardView() {
       setQuantitySold("");
 
       setItems((prevItems) => prevItems.map((item) => (item.id === selectedItem.id ? { ...item, quantity: newQuantity } : item)));
+      
+      // Update the sales data for this product
+      fetchAllSalesData();
     }
   };
 
@@ -127,14 +185,20 @@ export default function CardView() {
         <button onClick={() => navigate("/graph-view")} className="bg-purple-500 text-white py-2 px-6 rounded-full hover:bg-purple-600">Show Graph</button>
         
         <button className="bg-green-500 text-white py-2 px-6 rounded-full hover:bg-green-600" onClick={() => setPopupOpen(true)}>Add Item</button>
-        <button onClick={() => navigate("/graph-view")} className="bg-purple-500 text-white py-2 px-6 rounded-full hover:bg-purple-600">Ask Ai</button>
+        <button onClick={() => navigate("/airetrieve")} className="bg-purple-500 text-white py-2 px-6 rounded-full hover:bg-purple-600">Ask AI</button>
       </div>
 
       {loading && <p className="text-gray-400 mt-4">Loading inventory...</p>}
 
       <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6 w-full px-10">
         {items.map((item) => (
-          <motion.div key={item.id} className="bg-gray-800 p-4 rounded-lg shadow-lg flex flex-col items-start border border-gray-700 text-white" whileHover={{ scale: 1.05 }}>
+          <motion.div 
+            key={item.id} 
+            className="bg-gray-800 p-4 rounded-lg shadow-lg flex flex-col items-start border border-gray-700 text-white relative" 
+            whileHover={{ scale: 1.05 }}
+            onHoverStart={() => setHoveredItem(item.product_id)}
+            onHoverEnd={() => setHoveredItem(null)}
+          >
             <img src={item.image || "https://via.placeholder.com/150"} alt={item.product_name} className="w-32 h-32 object-cover rounded-md mb-2" />
             <h3 className="text-xl font-semibold text-green-400">{item.product_name}</h3>
             <p className="text-gray-300">{item.category}</p>
@@ -146,6 +210,50 @@ export default function CardView() {
             <p className="text-green-400 font-bold mt-2">${item.price_per_unit}</p>
 
             <button className="mt-4 bg-yellow-500 text-white py-1 px-4 rounded-full hover:bg-yellow-600" onClick={() => setSelectedItem(item)}>Edit Sale</button>
+            
+            {/* Hover Graph */}
+            <AnimatePresence>
+              {hoveredItem === item.product_id && itemSalesData[item.product_id] && itemSalesData[item.product_id].length > 0 && (
+                <motion.div 
+                  className="absolute z-50 top-0 transform -translate-y-full bg-gray-900 p-4 rounded-lg shadow-xl border border-gray-700"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 20 }}
+                  transition={{ duration: 0.2 }}
+                  style={{ width: '300px', height: '200px', marginTop: '-10px' }}
+                >
+                  <h4 className="text-sm font-semibold text-green-400 mb-2">Sales History</h4>
+                  <ResponsiveContainer width="100%" height="80%">
+                    <LineChart data={itemSalesData[item.product_id]}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                      <XAxis 
+                        dataKey="date" 
+                        tick={{ fill: 'white', fontSize: 10 }}
+                        tickFormatter={(date) => new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      />
+                      <YAxis tick={{ fill: 'white', fontSize: 10 }} />
+                      <Tooltip 
+                        contentStyle={{
+                          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                          border: '1px solid #444',
+                          color: 'white',
+                          fontSize: '12px'
+                        }}
+                        formatter={(value) => [`${value} ${item.unit}`, 'Quantity']}
+                        labelFormatter={(date) => new Date(date).toLocaleDateString()}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="quantity" 
+                        stroke="#4ade80" 
+                        strokeWidth={2}
+                        dot={{ r: 3, fill: '#4ade80' }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
         ))}
       </div>

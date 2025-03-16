@@ -38,8 +38,8 @@ function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/login" />} />
         <Route path="/signup" element={<SignUp />} />
-        <Route path="/Aiprompt" element={<Aiprompt/>} />
-        <Route path="/Airetrieve" element={<Airetrieve/>} />
+        <Route path="/aiprompt" element={<Aiprompt/>} />
+        <Route path="/airetrieve" element={isAuthenticated ? <Airetrieve/> : <Navigate to="/login" />} />
         <Route path="/login" element={<LoginPage setIsAuthenticated={setIsAuthenticated} />} />
         <Route path="/home" element={isAuthenticated ? <HomePage /> : <Navigate to="/login" />} />
         <Route path="/cardview" element={isAuthenticated ? <CardView /> : <Navigate to="/login" />} />
